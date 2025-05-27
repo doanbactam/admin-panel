@@ -1,0 +1,151 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model - tích hợp với Clerk authentication
+model User {
+  id        String   @id @default(cuid())
+  clerkId   String   @unique // Clerk user ID
+  email     String   @unique
+  name      String?
+  imageUrl  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  socialAccounts SocialAccount[]
+  posts          Post[]
+
+  @@map("users")
+}
+
+// Social Account model - lưu thông tin kết nối Facebook
+model SocialAccount {
+  id           String    @id @default(cuid())
+  userId       String
+  platform     String // "facebook", "instagram", etc.
+  accountId    String // Facebook User ID
+  accountName  String? // Display name
+  accessToken  String // Facebook access token
+  refreshToken String? // Refresh token if available
+  expiresAt    DateTime? // Token expiration
+  scope        String? // Permissions granted
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  // Relations
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pages Page[]
+
+  @@unique([userId, platform, accountId])
+  @@map("social_accounts")
+}
+
+// Page model - Facebook fanpages
+model Page {
+  id              String   @id @default(cuid())
+  socialAccountId String
+  pageId          String // Facebook Page ID
+  name            String
+  category        String?
+  about           String?
+  picture         String? // Page profile picture URL
+  accessToken     String // Page access token
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  socialAccount SocialAccount @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+  postPages     PostPage[]
+
+  @@unique([socialAccountId, pageId])
+  @@map("pages")
+}
+
+// Post model - bài viết
+model Post {
+  id          String     @id @default(cuid())
+  userId      String
+  title       String? // Tiêu đề bài viết (optional)
+  content     String // Nội dung bài viết
+  mediaUrls   String[] // URLs của hình ảnh/video
+  mediaType   String? // "image", "video", "carousel", etc.
+  status      PostStatus @default(DRAFT)
+  scheduledAt DateTime? // Thời gian lên lịch đăng
+  publishedAt DateTime? // Thời gian thực tế đăng
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  // Relations
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  postPages PostPage[]
+
+  @@map("posts")
+}
+
+// PostPage model - liên kết bài viết với các fanpage
+model PostPage {
+  id          String         @id @default(cuid())
+  postId      String
+  pageId      String
+  status      PostPageStatus @default(PENDING)
+  fbPostId    String? // Facebook Post ID sau khi đăng thành công
+  errorMsg    String? // Lỗi nếu có
+  publishedAt DateTime? // Thời gian đăng thành công
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  // Relations
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  page Page @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, pageId])
+  @@map("post_pages")
+}
+
+// Analytics model - thống kê bài viết
+model PostAnalytics {
+  id          String   @id @default(cuid())
+  fbPostId    String   @unique // Facebook Post ID
+  pageId      String // Facebook Page ID
+  likes       Int      @default(0)
+  comments    Int      @default(0)
+  shares      Int      @default(0)
+  reach       Int      @default(0)
+  impressions Int      @default(0)
+  clicks      Int      @default(0)
+  lastSyncAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("post_analytics")
+}
+
+// Enums
+enum PostStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+  FAILED
+}
+
+enum PostPageStatus {
+  PENDING
+  SCHEDULED
+  PUBLISHED
+  FAILED
+}
